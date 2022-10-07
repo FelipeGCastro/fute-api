@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum StatusTimer {
+  paused
+  initial
+  played
+}
+enum FieldType {
+  fieldA
+  fieldB
+  fieldC
+  fieldD
+  fieldE
+}
+
+model Vote {
+  id       String    @id @default(auto()) @map("_id") @db.ObjectId
+   field Field? @relation(fields: [fieldType], references: [type])
+  fieldType FieldType
+  teamVoted Team? @relation("TeamVoted",fields: [teamVotedDeviceId], references: [deviceId])
+  teamVotedDeviceId String @unique
+  teamVoting Team? @relation(name: "TeamVoting",fields: [teamVotingDeviceId], references: [deviceId])
+  teamVotingDeviceId String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model Team {
+  id       String    @id @default(auto()) @map("_id") @db.ObjectId
+  deviceId String @unique
+  name String
+  position  Int
+  teamVoted Vote[] @relation("TeamVoted")
+  teamVoting Vote? @relation("TeamVoting")
+  field Field? @relation(fields: [fieldType], references: [type])
+  fieldType FieldType
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model Field {
+  id    String  @id @default(auto()) @map("_id")  @db.ObjectId
+  type FieldType @unique
+  teams Team[]
+  votes Vote[]
+  timer DateTime
+  pausedAt DateTime
+  status StatusTimer
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
