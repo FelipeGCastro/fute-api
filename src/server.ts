@@ -22,6 +22,7 @@ export interface IPayload {
   deviceId: string
   teamName: string
   votedDeviceId: string
+  deviceIdToRemove: string
 }
 
 const app: Express = express()

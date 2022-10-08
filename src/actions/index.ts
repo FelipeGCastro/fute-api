@@ -1,4 +1,5 @@
-import { formatDistanceStrict, isAfter } from 'date-fns'
+import { Team } from '@prisma/client'
+import { addSeconds, differenceInSeconds } from 'date-fns'
 import { prisma } from '../database/prisma'
 import { io, IPayload, IResponse } from '../server'
 export type FieldsType = 'fieldA' | 'fieldB' | 'fieldC' | 'fieldD' | 'fieldE'
@@ -17,6 +18,30 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
 
     io.emit(field, { action: 'update-teams', data: teams } as IResponse)
     return true
+  }
+
+  const checkIsCaptain = async () => {
+    const teams = await prisma.team.findMany({
+      where: { fieldType: field },
+      include: {
+        // teamVoting: { select: { teamVoting: { select: { deviceId: true } } } },
+        teamVoting: { select: { teamVotedDeviceId: true } },
+        _count: {
+          select: { teamVoted: true },
+        },
+      },
+    })
+    const sortedTeams = teams.sort((a, b) => a.position - b.position)
+    var mostVoted = sortedTeams[0]
+    var mostVotedVotes = sortedTeams[0]._count.teamVoted
+
+    for (var i = 0; i < teams.length; i++) {
+      if (mostVotedVotes < teams[i]._count.teamVoted) {
+        mostVoted = teams[i]
+        mostVotedVotes = teams[i]._count.teamVoted
+      }
+    }
+    return mostVoted.deviceId === payload.deviceId
   }
 
   const sendVotes = async () => {
@@ -61,6 +86,12 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
   }
 
   const handleRemoveTeam = async () => {
+    if (payload.deviceId !== payload.deviceIdToRemove) {
+      const isCaptain = await checkIsCaptain()
+      if (!isCaptain) {
+        return true
+      }
+    }
     const team = await prisma.team.delete({
       where: { deviceId: payload.deviceId },
     })
@@ -73,6 +104,10 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
   }
 
   const handleTimerPause = async () => {
+    const isCaptain = await checkIsCaptain()
+    if (!isCaptain) {
+      return true
+    }
     const timer = await prisma.field.update({
       where: { type: field },
       data: {
@@ -80,16 +115,27 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
         pausedAt: new Date(),
       },
     })
+    console.log('timer: Pause:', timer)
     io.emit(field, { action: 'update-field', data: timer } as IResponse)
     return true
   }
   const handleTimerPlay = async () => {
+    const isCaptain = await checkIsCaptain()
+    if (!isCaptain) {
+      return true
+    }
     const time = await prisma.field.findFirst({
       where: { type: field },
     })
     let timeTimer
     if (time?.timer && time?.status === 'paused') {
-      // timeTimer = formatDistanceStrict(time?.pausedAt)
+      const distanceInSeconds = differenceInSeconds(
+        new Date(),
+        new Date(time?.pausedAt),
+      )
+      timeTimer = addSeconds(new Date(time.timer), distanceInSeconds)
+    } else {
+      timeTimer = new Date()
     }
     const timer = await prisma.field.update({
       where: { type: field },
@@ -98,10 +144,15 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
         timer: timeTimer,
       },
     })
+    console.log('timer: play:', timer)
     io.emit(field, { action: 'update-field', data: timer } as IResponse)
     return true
   }
   const handleTimerReset = async () => {
+    const isCaptain = await checkIsCaptain()
+    if (!isCaptain) {
+      return true
+    }
     const timer = await prisma.field.update({
       where: { type: field },
       data: {
@@ -109,6 +160,7 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
         timer: new Date(),
       },
     })
+    console.log('timer: reset:', timer)
     io.emit(field, { action: 'update-field', data: timer } as IResponse)
     return true
   }
@@ -123,5 +175,5 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
     ['timer-reset']: handleTimerReset,
   }
 
-  return handlers[payload.action] || true
+  return handlers[payload.action]() || true
 }
