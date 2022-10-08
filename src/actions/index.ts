@@ -1,3 +1,4 @@
+import { formatDistanceStrict, isAfter } from 'date-fns'
 import { prisma } from '../database/prisma'
 import { io, IPayload, IResponse } from '../server'
 export type FieldsType = 'fieldA' | 'fieldB' | 'fieldC' | 'fieldD' | 'fieldE'
@@ -71,33 +72,56 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
     return true
   }
 
-  if (payload.action === 'add-team') {
-    return handleAddNextTeam()
-  } else if (payload.action === 'remove-team') {
-    return handleRemoveTeam()
-  } else if (payload.action === 'vote-captain') {
-    return handleVote()
-  } else if (payload.action === 'fetch-teams') {
-    return sendTeams()
+  const handleTimerPause = async () => {
+    const timer = await prisma.field.update({
+      where: { type: field },
+      data: {
+        status: 'paused',
+        pausedAt: new Date(),
+      },
+    })
+    io.emit(field, { action: 'update-field', data: timer } as IResponse)
+    return true
   }
-}
+  const handleTimerPlay = async () => {
+    const time = await prisma.field.findFirst({
+      where: { type: field },
+    })
+    let timeTimer
+    if (time?.timer && time?.status === 'paused') {
+      // timeTimer = formatDistanceStrict(time?.pausedAt)
+    }
+    const timer = await prisma.field.update({
+      where: { type: field },
+      data: {
+        status: 'played',
+        timer: timeTimer,
+      },
+    })
+    io.emit(field, { action: 'update-field', data: timer } as IResponse)
+    return true
+  }
+  const handleTimerReset = async () => {
+    const timer = await prisma.field.update({
+      where: { type: field },
+      data: {
+        status: 'initial',
+        timer: new Date(),
+      },
+    })
+    io.emit(field, { action: 'update-field', data: timer } as IResponse)
+    return true
+  }
 
-// const team = {
-//   deviceId: '0',
-//   name: 'luiz castro',
-//   position: 1,
-//   votes: ['deviceId'],
-//   field: 'A',
-// }
-// const votes = {
-//   fieldId: 'DSFASFAS',
-//   teamId: 'DSFASFAS',
-// }
-// const field = {
-//   type: 'A',
-//   timer: {
-//     timer: 556165165, //1:0 556165165 - ('pausedAt' - 'initialTime')
-//     pausedAt: 61651651561, // 1:5
-//     action: 'paused' || 'initial' || 'played', // 1:7
-//   },
-// }
+  const handlers = {
+    ['add-team']: handleAddNextTeam,
+    ['remove-team']: handleRemoveTeam,
+    ['vote-captain']: handleVote,
+    ['fetch-teams']: sendTeams,
+    ['timer-pause']: handleTimerPause,
+    ['timer-play']: handleTimerPlay,
+    ['timer-reset']: handleTimerReset,
+  }
+
+  return handlers[payload.action] || true
+}

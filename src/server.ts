@@ -7,11 +7,18 @@ import { payloadHandler } from './actions'
 dotenv.config()
 
 export interface IResponse {
-  action: 'update-votes' | 'update-teams'
+  action: 'update-votes' | 'update-teams' | 'update-field'
   data: object
 }
 export interface IPayload {
-  action: 'vote-captain' | 'remove-team' | 'add-team' | 'fetch-teams'
+  action:
+    | 'vote-captain'
+    | 'remove-team'
+    | 'add-team'
+    | 'fetch-teams'
+    | 'timer-pause'
+    | 'timer-play'
+    | 'timer-reset'
   deviceId: string
   teamName: string
   votedDeviceId: string
