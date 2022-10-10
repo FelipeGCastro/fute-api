@@ -10,6 +10,9 @@ export interface IResponse {
   action: 'update-votes' | 'update-teams' | 'update-field'
   data: object
 }
+export interface IErrorCodes {
+  code: 'otherField'
+}
 export interface IPayload {
   action:
     | 'vote-captain'
@@ -23,6 +26,7 @@ export interface IPayload {
   teamName: string
   votedDeviceId: string
   deviceIdToRemove: string
+  deviceIdToAddNext: string
 }
 
 const app: Express = express()

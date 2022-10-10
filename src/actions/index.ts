@@ -1,9 +1,9 @@
 import { Team } from '@prisma/client'
 import { addSeconds, differenceInSeconds } from 'date-fns'
 import { prisma } from '../database/prisma'
-import { io, IPayload, IResponse } from '../server'
+import { IErrorCodes, io, IPayload, IResponse } from '../server'
 export type FieldsType = 'fieldA' | 'fieldB' | 'fieldC' | 'fieldD' | 'fieldE'
-export const payloadHandler = (field: FieldsType, payload: IPayload) => {
+export const payloadHandler = async (field: FieldsType, payload: IPayload) => {
   const sendTeams = async () => {
     const teams = await prisma.team.findMany({
       where: { fieldType: field },
@@ -15,7 +15,6 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
         },
       },
     })
-
     io.emit(field, { action: 'update-teams', data: teams } as IResponse)
     return true
   }
@@ -31,17 +30,21 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
         },
       },
     })
-    const sortedTeams = teams.sort((a, b) => a.position - b.position)
-    var mostVoted = sortedTeams[0]
-    var mostVotedVotes = sortedTeams[0]._count.teamVoted
+    if (teams.length) {
+      const sortedTeams = teams.sort((a, b) => a.position - b.position)
+      var mostVoted = sortedTeams[0]
+      var mostVotedVotes = sortedTeams[0]._count.teamVoted
 
-    for (var i = 0; i < teams.length; i++) {
-      if (mostVotedVotes < teams[i]._count.teamVoted) {
-        mostVoted = teams[i]
-        mostVotedVotes = teams[i]._count.teamVoted
+      for (var i = 0; i < teams.length; i++) {
+        if (mostVotedVotes < teams[i]._count.teamVoted) {
+          mostVoted = teams[i]
+          mostVotedVotes = teams[i]._count.teamVoted
+        }
       }
+      return mostVoted.deviceId === payload.deviceId
+    } else {
+      return false
     }
-    return mostVoted.deviceId === payload.deviceId
   }
 
   const sendVotes = async () => {
@@ -67,20 +70,47 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
   }
 
   const handleAddNextTeam = async () => {
+    if (
+      payload.deviceIdToAddNext &&
+      payload.deviceIdToAddNext !== payload.deviceId
+    ) {
+      const isCaptain = await checkIsCaptain()
+      if (!isCaptain) {
+        return false
+      }
+    }
+
     const teams = await prisma.team.findMany({
       where: { fieldType: field },
     })
+    let lastPosition
+    if (teams.length) {
+      const sortedTeams = teams.sort((a, b) => a.position - b.position)
+      lastPosition = sortedTeams[0].position
+
+      for (var i = 0; i < teams.length; i++) {
+        if (lastPosition < teams[i].position) {
+          lastPosition = teams[i].position
+        }
+      }
+      lastPosition = lastPosition + 1
+    } else {
+      lastPosition = teams.length + 1
+    }
+    const deviceId = payload.deviceIdToAddNext || payload.deviceId
     const team = await prisma.team.upsert({
-      where: { deviceId: payload.deviceId },
-      update: {},
+      where: { deviceId: deviceId },
+      update: {
+        position: lastPosition,
+      },
       create: {
         name: payload.teamName,
         deviceId: payload.deviceId,
-        position: teams.length + 1,
+        position: lastPosition,
         fieldType: field,
       },
     })
-    console.log('Team:', team)
+    console.log('Next Team:', team)
     await sendTeams()
     return true
   }
@@ -92,13 +122,19 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
         return true
       }
     }
-    const team = await prisma.team.delete({
-      where: { deviceId: payload.deviceId },
-    })
+    let team
+    try {
+      team = await prisma.team.delete({
+        where: { deviceId: payload.deviceId },
+      })
+    } catch (error) {
+      console.log('error:', error)
+    }
+
     await prisma.vote.deleteMany({
       where: { teamVotingDeviceId: payload.deviceId },
     })
-    console.log('Team:', team)
+    console.log('Team Removed:', team)
     await sendTeams()
     return true
   }
@@ -165,6 +201,30 @@ export const payloadHandler = (field: FieldsType, payload: IPayload) => {
     return true
   }
 
+  const fieldVerification = async () => {
+    if (!payload.deviceId && payload.action !== 'fetch-teams') {
+      return false
+    }
+    const team = await prisma.team.findFirst({
+      where: { deviceId: payload.deviceId },
+    })
+    if (team && team.fieldType !== field) {
+      if (
+        payload.action === 'remove-team' ||
+        payload.action === 'fetch-teams'
+      ) {
+        return true
+      } else {
+        io.emit('error', { code: 'otherField' } as IErrorCodes)
+        return false
+      }
+    }
+    return true
+  }
+  const verification = await fieldVerification()
+  if (!verification) {
+    return false
+  }
   const handlers = {
     ['add-team']: handleAddNextTeam,
     ['remove-team']: handleRemoveTeam,
