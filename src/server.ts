@@ -11,7 +11,7 @@ export interface IResponse {
   data: object
 }
 export interface IErrorCodes {
-  code: 'otherField'
+  code: 'otherField' | 'notCaptain'
 }
 export interface IPayload {
   action:

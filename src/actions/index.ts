@@ -41,8 +41,13 @@ export const payloadHandler = async (field: FieldsType, payload: IPayload) => {
           mostVotedVotes = teams[i]._count.teamVoted
         }
       }
+
+      if (mostVoted.deviceId !== payload.deviceId) {
+        io.emit('error', { code: 'notCaptain' } as IErrorCodes)
+      }
       return mostVoted.deviceId === payload.deviceId
     } else {
+      io.emit('error', { code: 'notCaptain' } as IErrorCodes)
       return false
     }
   }
@@ -119,7 +124,7 @@ export const payloadHandler = async (field: FieldsType, payload: IPayload) => {
     if (payload.deviceId !== payload.deviceIdToRemove) {
       const isCaptain = await checkIsCaptain()
       if (!isCaptain) {
-        return true
+        return false
       }
     }
     let team
