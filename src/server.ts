@@ -48,7 +48,7 @@ io.on('connection', socket => {
   })
 })
 
-app.get('/', (req, res) => {
+app.get('/healthcheck', (req, res) => {
   res.send('Express + TypeScript Server is running now')
 })
 httpServer.listen(port, () => {
